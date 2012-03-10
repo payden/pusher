@@ -25,6 +25,7 @@
 /config.status
 /config.sub
 /configure.in
+/config.cache
 /libtool
 /ltmain.sh
 /mkinstalldirs

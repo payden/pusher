@@ -4,7 +4,7 @@
 
 #include "php.h"
 #include "php_pusher.h"
-
+#include <curl/curl.h>
 
 static function_entry pusher_functions[] = {
 	{NULL, NULL, NULL}
@@ -17,7 +17,7 @@ zend_module_entry pusher_module_entry = {
 	PHP_PUSHER_EXTNAME,
 	pusher_functions,
 	PHP_MINIT(pusher),
-	NULL,
+	PHP_MSHUTDOWN(pusher),
 	NULL,
 	NULL,
 	NULL,
@@ -34,6 +34,11 @@ ZEND_GET_MODULE(pusher)
 
 PHP_MINIT_FUNCTION(pusher)
 {
+	curl_global_init(CURL_GLOBAL_ALL);
 	register_pusher_class(TSRMLS_C);
 }
 
+PHP_MSHUTDOWN_FUNCTION(pusher)
+{
+	curl_global_cleanup();
+}

@@ -6,7 +6,7 @@
 
 //PHP Function prototypes
 PHP_METHOD(pusher, __construct);
-PHP_METHOD(pusher, getVal);
+PHP_METHOD(pusher, getKey);
 PHP_MINIT_FUNCTION(pusher);
 PHP_MSHUTDOWN_FUNCTION(pusher);
 
@@ -14,12 +14,18 @@ PHP_MSHUTDOWN_FUNCTION(pusher);
 
 typedef struct {
 	zend_object zo;
-	int *val;
+	char *key;
+	char *secret;
+	unsigned long app_id;
 } pusher_object;
 
+//global symbols
 static zend_class_entry *pusher_ce;
+zend_object_handlers pusher_object_handlers;
+
+//function prototypes
 void register_pusher_class(TSRMLS_D);
-static void pusher_objects_dtor(void *object, zend_object_handle handle TSRMLS_DC);
+static char *md5_hash(const char *str);
 
 extern zend_module_entry pusher_module_entry;
 
