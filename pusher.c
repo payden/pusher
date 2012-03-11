@@ -50,20 +50,20 @@ PHP_METHOD(pusher, __construct) {
 
 
 PHP_METHOD(pusher, trigger) {
-	zval *this;
-	pusher_object *obj;
-	char strtime[32]; //32 seems like a nice round number.
-	char *channel, *event, *payload;
-	unsigned long int channel_len, event_len, payload_len, signature_len, i;
 	CURL *curl;
 	CURLcode res;
+	zval *this;
+	pusher_object *obj;
+	struct curl_slist *slist = NULL;
+	char *channel, *event, *payload, *body_md5, *sign_this;
+	unsigned long int channel_len, event_len, payload_len, signature_len, i;
 	const char *host = "http://api.pusherapp.com";
 	char uri[512]; //TODO: revisit this and dynamically allocate just enough memory.
 	char query_string[512]; //TODO: revisit this and dynamically allocate just enough memory.
 	char url[1024]; //TODO: revisit this and dynamically allocate just enough memory.
+	char strtime[32]; //32 seems like a nice round number.
 	unsigned char signature[2 * SHA256_DIGEST_SIZE + 1]; //sha256 digest size is 32, but displaying it as ascii takes two bytes per digest byte + '\0'
 	unsigned char mac[SHA256_DIGEST_SIZE];
-	char *body_md5, *sign_this;
 
 	if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "sss", &channel, &channel_len, &event, &event_len, &payload, &payload_len) == FAILURE) {
 		RETURN_FALSE;
@@ -72,7 +72,7 @@ PHP_METHOD(pusher, trigger) {
 	this = getThis();
 	obj = (pusher_object *)zend_object_store_get_object(this TSRMLS_CC);
 	
-	snprintf(uri, 2000, "/apps/%d/channels/%s/events", obj->app_id, channel);
+	snprintf(uri, 512, "/apps/%d/channels/%s/events", obj->app_id, channel);
 
 	body_md5 = md5_hash(payload);
 	snprintf(strtime, 32, "%d", time(NULL));
@@ -105,10 +105,13 @@ PHP_METHOD(pusher, trigger) {
 	efree(body_md5);
 	curl = curl_easy_init();
 	if(curl) {
+		slist = curl_slist_append(slist, "Content-Type: application/json");
 		curl_easy_setopt(curl, CURLOPT_URL, url);
+		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, slist);
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_data);
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, (void *)payload);
 		res = curl_easy_perform(curl);
+		curl_slist_free_all(slist);
 		curl_easy_cleanup(curl);
 	}
 	else {
@@ -166,14 +169,17 @@ static void pusher_free_storage(void *object TSRMLS_DC) {
 zend_object_value pusher_object_create(zend_class_entry *class_type TSRMLS_DC) {
 	zend_object_value retval;
 	pusher_object *intern;
-
 	intern = (pusher_object *) emalloc(sizeof(pusher_object));
 	memset(intern, 0, sizeof(pusher_object));
 	intern->zo.ce = class_type;
 	ALLOC_HASHTABLE(intern->zo.properties);
 	zend_hash_init(intern->zo.properties, 0, NULL, ZVAL_PTR_DTOR, 0);
-	//zend_hash_copy(intern->zo.properties, &class_type->default_properties, (copy_ctor_func_t) zval_add_ref, (void *) &tmp, sizeof(zval *));
+#if ZEND_MODULE_API_NO >= 20100525
 	object_properties_init(&(intern->zo), class_type);
+#else
+	zval *tmp;
+	zend_hash_copy(intern->zo.properties, &class_type->default_properties, (copy_ctor_func_t) zval_add_ref, (void *) &tmp, sizeof(zval *));
+#endif
 
 	retval.handle = zend_objects_store_put(intern, NULL, pusher_free_storage, NULL TSRMLS_CC);
 	retval.handlers = (zend_object_handlers *) &pusher_object_handlers;
