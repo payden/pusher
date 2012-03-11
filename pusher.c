@@ -22,9 +22,9 @@ PHP_METHOD(pusher, __construct) {
 	zval *this;
 	char *passed_key;
 	char *passed_secret;
-	unsigned long int passed_app_id;
-	unsigned long int passed_key_len;
-	unsigned long int passed_secret_len;
+	long int passed_app_id;
+	int passed_key_len;
+	int passed_secret_len;
 	
 	if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ssl", &passed_key, &passed_key_len, &passed_secret, &passed_secret_len, &passed_app_id) == FAILURE) {
 		RETURN_FALSE;
@@ -32,7 +32,6 @@ PHP_METHOD(pusher, __construct) {
 
 	this = getThis();
 	pusher_object *pusher_obj = (pusher_object *)zend_object_store_get_object(this TSRMLS_CC);
-
 
 	pusher_obj->key = (char *)emalloc(passed_key_len+1);
 	memset(pusher_obj->key, '\0', passed_key_len+1);
@@ -166,7 +165,6 @@ static void pusher_free_storage(void *object TSRMLS_DC) {
 
 zend_object_value pusher_object_create(zend_class_entry *class_type TSRMLS_DC) {
 	zend_object_value retval;
-	zval *tmp;
 	pusher_object *intern;
 
 	intern = (pusher_object *) emalloc(sizeof(pusher_object));
@@ -174,7 +172,8 @@ zend_object_value pusher_object_create(zend_class_entry *class_type TSRMLS_DC) {
 	intern->zo.ce = class_type;
 	ALLOC_HASHTABLE(intern->zo.properties);
 	zend_hash_init(intern->zo.properties, 0, NULL, ZVAL_PTR_DTOR, 0);
-	zend_hash_copy(intern->zo.properties, &class_type->default_properties, (copy_ctor_func_t) zval_add_ref, (void *) &tmp, sizeof(zval *));
+	//zend_hash_copy(intern->zo.properties, &class_type->default_properties, (copy_ctor_func_t) zval_add_ref, (void *) &tmp, sizeof(zval *));
+	object_properties_init(&(intern->zo), class_type);
 
 	retval.handle = zend_objects_store_put(intern, NULL, pusher_free_storage, NULL TSRMLS_CC);
 	retval.handlers = (zend_object_handlers *) &pusher_object_handlers;
