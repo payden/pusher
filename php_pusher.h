@@ -28,6 +28,7 @@ zend_object_handlers pusher_object_handlers;
 //function prototypes
 void register_pusher_class(TSRMLS_D);
 static char *md5_hash(const char *str);
+static size_t curl_write_data(void *buffer, size_t size, size_t nmemb, void *userp);
 
 extern zend_module_entry pusher_module_entry;
 

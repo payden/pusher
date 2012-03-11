@@ -58,8 +58,6 @@ PHP_METHOD(pusher, trigger) {
 	unsigned long int channel_len, event_len, payload_len, signature_len, i;
 	CURL *curl;
 	CURLcode res;
-	struct curl_httppost *formpost;
-	struct curl_httppost *lastptr;
 	const char *host = "http://api.pusherapp.com";
 	char uri[512]; //TODO: revisit this and dynamically allocate just enough memory.
 	char query_string[512]; //TODO: revisit this and dynamically allocate just enough memory.
@@ -93,10 +91,10 @@ PHP_METHOD(pusher, trigger) {
 	memset(sign_this, '\0', signature_len + 1);
 	snprintf(sign_this, signature_len, "POST\n%s\nauth_key=%s&auth_timestamp=%s&auth_version=1.0&body_md5=%s&name=%s", uri, obj->key, strtime, body_md5, event);
 
-	hmac_sha256(obj->secret, strlen(obj->secret), sign_this, strlen(sign_this), mac, SHA256_DIGEST_SIZE);
+	hmac_sha256((unsigned char *)obj->secret, strlen(obj->secret), (unsigned char *)sign_this, strlen(sign_this), mac, SHA256_DIGEST_SIZE);
 
 	for(i=0;i<SHA256_DIGEST_SIZE;i++)
-		sprintf(signature + i*2, "%02x", mac[i]);
+		sprintf((char *)signature + i*2, "%02x", mac[i]);
 
 	signature[2 * SHA256_DIGEST_SIZE] = '\0';
 
@@ -106,10 +104,10 @@ PHP_METHOD(pusher, trigger) {
 	snprintf(url, 1024, "%s%s%s", host, uri, query_string);
 
 	efree(body_md5);
-	php_printf("Going to connect to %s and post data: %s\n",url, payload);
 	curl = curl_easy_init();
 	if(curl) {
 		curl_easy_setopt(curl, CURLOPT_URL, url);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_data);
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, (void *)payload);
 		res = curl_easy_perform(curl);
 		curl_easy_cleanup(curl);
@@ -117,7 +115,7 @@ PHP_METHOD(pusher, trigger) {
 	else {
 		RETURN_FALSE;
 	}
-	RETURN_TRUE;
+	RETURN_LONG(res);
 
 }
 
@@ -128,6 +126,10 @@ PHP_METHOD(pusher, getKey) {
 	obj = getThis();
 	pusher_object *pusher_obj = (pusher_object *)zend_object_store_get_object(obj TSRMLS_CC);
 	RETURN_STRING(pusher_obj->key, 1);
+}
+
+static size_t curl_write_data(void *buffer, size_t size, size_t nmemb, void *userp) {
+	return size * nmemb;
 }
 
 static char *md5_hash(const char *str) {
