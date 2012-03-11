@@ -5,12 +5,16 @@
 #include "php.h"
 #include "php_pusher.h"
 #include "md5.h"
+#include "sha2.h"
+#include "hmac_sha2.h"
+#include <curl/curl.h>
 
 extern zend_class_entry *pusher_ce;
 
 static zend_function_entry pusher_methods[] = {
 	PHP_ME(pusher, __construct, NULL, ZEND_ACC_PUBLIC | ZEND_ACC_CTOR)
 	PHP_ME(pusher, getKey, NULL, ZEND_ACC_PUBLIC)
+	PHP_ME(pusher, trigger, NULL, ZEND_ACC_PUBLIC)
 	{NULL, NULL, NULL}
 };
 
@@ -44,6 +48,79 @@ PHP_METHOD(pusher, __construct) {
 
 	RETURN_TRUE;
 }
+
+
+PHP_METHOD(pusher, trigger) {
+	zval *this;
+	pusher_object *obj;
+	char strtime[32]; //32 seems like a nice round number.
+	char *channel, *event, *payload;
+	unsigned long int channel_len, event_len, payload_len, signature_len, i;
+	CURL *curl;
+	CURLcode res;
+	struct curl_httppost *formpost;
+	struct curl_httppost *lastptr;
+	const char *host = "http://api.pusherapp.com";
+	char uri[512]; //TODO: revisit this and dynamically allocate just enough memory.
+	char query_string[512]; //TODO: revisit this and dynamically allocate just enough memory.
+	char url[1024]; //TODO: revisit this and dynamically allocate just enough memory.
+	unsigned char signature[2 * SHA256_DIGEST_SIZE + 1]; //sha256 digest size is 32, but displaying it as ascii takes two bytes per digest byte + '\0'
+	unsigned char mac[SHA256_DIGEST_SIZE];
+	char *body_md5, *sign_this;
+
+	if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "sss", &channel, &channel_len, &event, &event_len, &payload, &payload_len) == FAILURE) {
+		RETURN_FALSE;
+	}
+
+	this = getThis();
+	obj = (pusher_object *)zend_object_store_get_object(this TSRMLS_CC);
+	
+	snprintf(uri, 2000, "/apps/%d/channels/%s/events", obj->app_id, channel);
+
+	body_md5 = md5_hash(payload);
+	snprintf(strtime, 32, "%d", time(NULL));
+
+	//generating a signature is a bitch.  I'll try and annotate.
+	signature_len = 5; // 'POST\n'
+	signature_len += strlen(uri) + 1; // 'uri\n'
+	signature_len += 9 + strlen(obj->key); // 'auth_key=<auth_key>'
+	signature_len += 17 + strlen(strtime); // '&auth_timestamp=<timestamp>'
+	signature_len += strlen("&auth_version=1.0"); // <--
+	signature_len += 10 + strlen(body_md5); //&body_md5=<body_md5>
+	signature_len += 6 + strlen(event); //&name=<event_name>
+
+	sign_this = (char *)emalloc(signature_len + 1);
+	memset(sign_this, '\0', signature_len + 1);
+	snprintf(sign_this, signature_len, "POST\n%s\nauth_key=%s&auth_timestamp=%s&auth_version=1.0&body_md5=%s&name=%s", uri, obj->key, strtime, body_md5, event);
+
+	hmac_sha256(obj->secret, strlen(obj->secret), sign_this, strlen(sign_this), mac, SHA256_DIGEST_SIZE);
+
+	for(i=0;i<SHA256_DIGEST_SIZE;i++)
+		sprintf(signature + i*2, "%02x", mac[i]);
+
+	signature[2 * SHA256_DIGEST_SIZE] = '\0';
+
+	efree(sign_this);
+
+	snprintf(query_string, 512, "?auth_key=%s&auth_timestamp=%s&auth_version=1.0&body_md5=%s&name=%s&auth_signature=%s", obj->key, strtime, body_md5, event, signature);
+	snprintf(url, 1024, "%s%s%s", host, uri, query_string);
+
+	efree(body_md5);
+	php_printf("Going to connect to %s and post data: %s\n",url, payload);
+	curl = curl_easy_init();
+	if(curl) {
+		curl_easy_setopt(curl, CURLOPT_URL, url);
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, (void *)payload);
+		res = curl_easy_perform(curl);
+		curl_easy_cleanup(curl);
+	}
+	else {
+		RETURN_FALSE;
+	}
+	RETURN_TRUE;
+
+}
+
 
 
 PHP_METHOD(pusher, getKey) {
