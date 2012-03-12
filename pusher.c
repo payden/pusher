@@ -181,7 +181,7 @@ PHP_METHOD(pusher, trigger) {
 	body_md5 = md5_hash(payload);
 	snprintf(strtime, 32, "%d", time(NULL));
 
-	//generating a signature is a bitch.  I'll try and annotate.
+	//generating a signature is a *pain*.  I'll try and annotate.
 	signature_len = 5; // 'POST\n'
 	signature_len += strlen(uri) + 1; // 'uri\n'
 	signature_len += 9 + strlen(obj->key); // 'auth_key=<auth_key>'
