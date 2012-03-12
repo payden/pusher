@@ -1,20 +1,22 @@
 Pusher API Extension
 
-Right now, this extension is only designed for Linux systems.  Perhaps in the future, I'll look at building it on a Win box.
+Right now, this extension is only designed for Linux systems.  
+Perhaps in the future, I'll look at building it on a Win box.
 
 To install it, you must have the PHP source for your version.  Then run the following commands.
 
-cd /path/to/php-5.4.0/ext
-git clone git://github.com/payden/pusher.git
-cd pusher
-phpize && ./configure && make
-sudo make install
+$ cd /path/to/php-5.4.0/ext
+$ git clone git://github.com/payden/pusher.git
+$ cd pusher
+$ phpize && ./configure && make
+$ sudo make install
 
-Provided there isn't a problem building, this will put pusher.so in your extensions directory.  Usually in /usr/local/lib/php/extensions somewhere.
+Provided there isn't a problem building, this will put pusher.so in your extensions directory.
+This is usually in /usr/local/lib/php/extensions somewhere.
 
 You may or may not need to ensure you're 'extension_dir' directive in php.ini points to the correct path.
 
-Then all you have to do is add a 'extension=pusher.so' line to your php.ini and restart php.  (php-fpm/mod_php/whatever)
+Then all you have to do is add a 'extension=pusher.so' line to your php.ini and restart php.
 
 
 Now, to use the class the extension implements.
