@@ -7,7 +7,12 @@
 #include "md5.h"
 #include "sha2.h"
 #include "hmac_sha2.h"
-#include <curl/curl.h>
+#include <unistd.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+
 
 extern zend_class_entry *pusher_ce;
 
@@ -31,9 +36,55 @@ static void pusher_free_storage(void *object TSRMLS_DC) {
         efree(intern);
 }
 
-static size_t curl_write_data(void *buffer, size_t size, size_t nmemb, void *userp) {
-        return size * nmemb;
+static int pusher_post(char *uri, char *payload) {
+	char *host = "api.pusherapp.com";
+	char *port = "80";
+	char *request;
+	struct addrinfo *servinfo, *p, hints;
+	//pad_len is roughly how many static chars there are in the request
+	//This is used to calculate how much memory to allocate to construct the request
+	int sock, result, content_len, request_len, pad_len = 133;
+
+	request_len = strlen(uri) + strlen(host) + strlen(payload) + pad_len;
+	content_len = strlen(payload);
+        request = (char *)emalloc(request_len);
+
+        snprintf(request, request_len, "POST %s HTTP/1.1\r\nHost: %s\r\nAccept: */*\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s\r\n", uri, host, content_len, payload);	
+
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+
+	if(getaddrinfo(host, port, &hints, &servinfo) != 0) {
+		return -1;
+	}
+	for(p = servinfo; p != NULL; p = p->ai_next) {
+		if((sock = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
+			continue;
+		}
+		if(connect(sock, p->ai_addr, p->ai_addrlen) == -1) {
+			close(sock);
+			continue;
+		}
+
+		break; //only hit if we succeeded in getting a socket and connect'ing
+	}
+
+	if(p == NULL) {
+		return -2;
+	}
+
+	freeaddrinfo(servinfo);
+	p = servinfo = NULL;
+
+	result = send(sock, request, strlen(request), 0);
+	close(sock);
+	efree(request);
+	efree(uri);
+	efree(payload);
+	return result;
 }
+
 
 static char *md5_hash(const char *str) {
         md5_state_t *state;
@@ -106,17 +157,14 @@ PHP_METHOD(pusher, __construct) {
 
 
 PHP_METHOD(pusher, trigger) {
-	CURL *curl;
-	CURLcode res;
 	zval *this;
 	pusher_object *obj;
-	struct curl_slist *slist = NULL;
-	char *channel, *event, *payload, *body_md5, *sign_this;
-	unsigned long int channel_len, event_len, payload_len, signature_len, i;
+	char *channel, *event, *payload, *body_md5, *sign_this, *post_payload, *post_uri;
+	unsigned long int channel_len, event_len, payload_len, signature_len, i, result;
 	const char *host = "http://api.pusherapp.com";
 	char uri[512]; //TODO: revisit this and dynamically allocate just enough memory.
 	char query_string[512]; //TODO: revisit this and dynamically allocate just enough memory.
-	char url[1024]; //TODO: revisit this and dynamically allocate just enough memory.
+	char full_uri[1024]; //TODO: revisit this and dynamically allocate just enough memory.
 	char strtime[32]; //32 seems like a nice round number.
 	unsigned char signature[2 * SHA256_DIGEST_SIZE + 1]; //sha256 digest size is 32, but displaying it as ascii takes two bytes per digest byte + '\0'
 	unsigned char mac[SHA256_DIGEST_SIZE];
@@ -156,25 +204,18 @@ PHP_METHOD(pusher, trigger) {
 	efree(sign_this);
 
 	snprintf(query_string, 512, "?auth_key=%s&auth_timestamp=%s&auth_version=1.0&body_md5=%s&name=%s&auth_signature=%s", obj->key, strtime, body_md5, event, signature);
-	snprintf(url, 1024, "%s%s%s", host, uri, query_string);
+	snprintf(full_uri, 1024, "%s%s", uri, query_string);
 
 	efree(body_md5);
-	curl = curl_easy_init();
-	if(curl) {
-		slist = curl_slist_append(slist, "Content-Type: application/json");
-		curl_easy_setopt(curl, CURLOPT_URL, url);
-		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, slist);
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_data);
-		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, (void *)payload);
-		res = curl_easy_perform(curl);
-		curl_slist_free_all(slist);
-		curl_easy_cleanup(curl);
-	}
-	else {
-		RETURN_FALSE;
-	}
-	RETURN_LONG(res);
+	
+	post_payload = (char *)estrdup(payload);
+	post_uri = (char *)estrdup(full_uri);
 
+	result = pusher_post(post_uri, post_payload);
+	if(result >= 0) {
+		RETURN_TRUE;
+	}
+	RETURN_FALSE;
 }
 
 
