@@ -159,8 +159,8 @@ PHP_METHOD(pusher, __construct) {
 PHP_METHOD(pusher, trigger) {
 	zval *this;
 	pusher_object *obj;
-	char *channel, *event, *payload, *body_md5, *sign_this, *post_payload, *post_uri;
-	unsigned long int channel_len, event_len, payload_len, signature_len, i, result;
+	char *channel, *event, *payload, *socket_id, *body_md5, *sign_this, *post_payload, *post_uri;
+	unsigned long int channel_len, event_len, payload_len, socket_id_len, signature_len, i, result;
 	const char *host = "http://api.pusherapp.com";
 	char uri[512]; //TODO: revisit this and dynamically allocate just enough memory.
 	char query_string[512]; //TODO: revisit this and dynamically allocate just enough memory.
@@ -168,8 +168,11 @@ PHP_METHOD(pusher, trigger) {
 	char strtime[32]; //32 seems like a nice round number.
 	unsigned char signature[2 * SHA256_DIGEST_SIZE + 1]; //sha256 digest size is 32, but displaying it as ascii takes two bytes per digest byte + '\0'
 	unsigned char mac[SHA256_DIGEST_SIZE];
+	
 
-	if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "sss", &channel, &channel_len, &event, &event_len, &payload, &payload_len) == FAILURE) {
+	channel = event = payload = socket_id = body_md5 = sign_this = post_payload = post_uri = NULL;
+
+	if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "sss|s", &channel, &channel_len, &event, &event_len, &payload, &payload_len, &socket_id, &socket_id_len) == FAILURE) {
 		RETURN_FALSE;
 	}
 
@@ -189,10 +192,18 @@ PHP_METHOD(pusher, trigger) {
 	signature_len += strlen("&auth_version=1.0"); // <--
 	signature_len += 10 + strlen(body_md5); //&body_md5=<body_md5>
 	signature_len += 6 + strlen(event); //&name=<event_name>
+	if(socket_id) { signature_len += 12 + strlen(socket_id); }//&socket_id=<socket_id>
 
 	sign_this = (char *)emalloc(signature_len + 1);
 	memset(sign_this, '\0', signature_len + 1);
 	snprintf(sign_this, signature_len, "POST\n%s\nauth_key=%s&auth_timestamp=%s&auth_version=1.0&body_md5=%s&name=%s", uri, obj->key, strtime, body_md5, event);
+	
+	if(socket_id) {
+		i = strlen(sign_this);
+		snprintf(sign_this+i, signature_len-i, "&socket_id=%s", socket_id);
+
+	}
+
 
 	hmac_sha256((unsigned char *)obj->secret, strlen(obj->secret), (unsigned char *)sign_this, strlen(sign_this), mac, SHA256_DIGEST_SIZE);
 
