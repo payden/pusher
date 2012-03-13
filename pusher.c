@@ -20,7 +20,6 @@ extern zend_class_entry *pusher_ce;
 
 static zend_function_entry pusher_methods[] = {
 	PHP_ME(pusher, __construct, NULL, ZEND_ACC_PUBLIC | ZEND_ACC_CTOR)
-	PHP_ME(pusher, getKey, NULL, ZEND_ACC_PUBLIC)
 	PHP_ME(pusher, trigger, NULL, ZEND_ACC_PUBLIC)
 	{NULL, NULL, NULL}
 };
@@ -230,13 +229,6 @@ PHP_METHOD(pusher, trigger) {
 }
 
 
-
-PHP_METHOD(pusher, getKey) {
-	zval *obj;
-	obj = getThis();
-	pusher_object *pusher_obj = (pusher_object *)zend_object_store_get_object(obj TSRMLS_CC);
-	RETURN_STRING(pusher_obj->key, 1);
-}
 
 
 void register_pusher_class(TSRMLS_D) {

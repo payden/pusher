@@ -6,7 +6,6 @@
 
 //PHP Function prototypes
 PHP_METHOD(pusher, __construct);
-PHP_METHOD(pusher, getKey);
 PHP_METHOD(pusher, trigger);
 
 PHP_MINIT_FUNCTION(pusher);
