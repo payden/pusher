@@ -7,6 +7,8 @@
 //PHP Function prototypes
 PHP_METHOD(pusher, __construct);
 PHP_METHOD(pusher, trigger);
+PHP_METHOD(pusher, socket_auth);
+PHP_METHOD(pusher, presence_auth);
 
 PHP_MINIT_FUNCTION(pusher);
 PHP_MSHUTDOWN_FUNCTION(pusher);
