@@ -278,6 +278,7 @@ PHP_METHOD(pusher, socket_auth) {
 	}
 
 	sstr = emalloc(sizeof(smart_str));
+	smart_str_sets(sstr, estrdup(""));
 	php_json_encode(sstr, ret_arr, 0);
 	ret_str = estrdup(sstr->c);
 
