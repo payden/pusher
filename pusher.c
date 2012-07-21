@@ -106,6 +106,49 @@ static char *md5_hash(const char *str) {
         return md5_str_ptr;
 }
 
+static char *socket_auth_str(pusher_object *obj, char *channel, int channel_len, char *socket_id, int socket_id_len, char *custom_data, int custom_data_len) {
+	zval *ret_arr;
+	char *sign_this, *signature, *auth_str, *ret_str;
+	int sign_this_len, i;
+	smart_str *sstr;
+	unsigned char mac[SHA256_DIGEST_SIZE];
+	if(custom_data) {
+		sign_this_len = channel_len + socket_id_len + custom_data_len + 3;
+		sign_this = (char *)emalloc(sign_this_len);
+		snprintf(sign_this, sign_this_len, "%s:%s:%s", socket_id, channel, custom_data);
+	}
+	else {
+		sign_this_len = channel_len + socket_id_len + 2;
+		sign_this = (char *)emalloc(sign_this_len);
+		snprintf(sign_this, sign_this_len, "%s:%s", socket_id, channel);
+	}
+	hmac_sha256((unsigned char *)obj->secret, strlen(obj->secret), (unsigned char *)sign_this, strlen(sign_this), mac, SHA256_DIGEST_SIZE);
+	signature = (char *)emalloc(SHA256_DIGEST_SIZE * 2 + 1);
+	memset(signature, 0, SHA256_DIGEST_SIZE * 2 + 1);
+	for(i=0;i<SHA256_DIGEST_SIZE;i++)
+		sprintf((char *)signature + i*2, "%02x", mac[i]);
+	efree(sign_this);
+	i = strlen(obj->key) + strlen(signature);
+	auth_str = (char *)emalloc(i);
+	snprintf(auth_str, i, "%s:%s", obj->key, signature);
+	efree(signature);
+	ALLOC_INIT_ZVAL(ret_arr);
+	array_init(ret_arr);
+	add_assoc_string(ret_arr, "auth", auth_str, 1);
+	efree(auth_str);
+	if(custom_data) {
+		add_assoc_string(ret_arr, "channel_data", custom_data, 1);
+	}
+
+	sstr = emalloc(sizeof(smart_str));
+	smart_str_sets(sstr, estrdup(""));
+	php_json_encode(sstr, ret_arr, 0);
+	smart_str_0(sstr);
+	ret_str = estrdup(sstr->c);
+	smart_str_free(sstr);
+	return ret_str;
+}
+
 static zend_object_value pusher_object_create(zend_class_entry *class_type TSRMLS_DC) {
         zend_object_value retval;
         pusher_object *intern;
@@ -233,62 +276,52 @@ PHP_METHOD(pusher, trigger) {
 
 
 PHP_METHOD(pusher, socket_auth) {
-	zval *this, *ret_arr;
-	smart_str *sstr;
-	char *channel, *socket_id, *custom_data, *sign_this, *signature, *auth_str, *ret_str;
-	int channel_len, socket_id_len, custom_data_len, sign_this_len, i;
-	unsigned char mac[SHA256_DIGEST_SIZE];
-	pusher_object *obj;
+        zval *this;
+        char *channel, *socket_id, *custom_data, *ret_str;
+        int channel_len, socket_id_len, custom_data_len;
+        pusher_object *obj;
 
-	channel = socket_id = custom_data = sign_this = signature = auth_str = ret_str = NULL;
-	if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ss|s", &channel, &channel_len, &socket_id, &socket_id_len, &custom_data, &custom_data_len) == FAILURE) {
-		RETURN_FALSE;
-	}
+        channel = socket_id = custom_data = ret_str = NULL;
+        if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ss|s", &channel, &channel_len, &socket_id, &socket_id_len, &custom_data, &custom_data_len) == FAILURE) {
+                RETURN_FALSE;
+        }
 
-	if(custom_data) {
-		sign_this_len = channel_len + socket_id_len + 3; // 2 x ':' + '\0'
-		sign_this = (char *)emalloc(sign_this_len);
-		snprintf(sign_this, sign_this_len, "%s:%s:%s", socket_id, channel, custom_data);
-	}
-	else {
-		sign_this_len = channel_len + socket_id_len + 2; // ':' + '\0'
-		sign_this = (char *)emalloc(sign_this_len);
-		snprintf(sign_this, sign_this_len, "%s:%s", socket_id, channel);
-	}
+
+        this = getThis();
+        obj = (pusher_object *)zend_object_store_get_object(this TSRMLS_CC);
+        ret_str = socket_auth_str(obj, channel, channel_len, socket_id, socket_id_len, custom_data, custom_data_len);
+        RETURN_STRING(ret_str, 0);
+}
+
+PHP_METHOD(pusher, presence_auth) {
+        zval *this, *ret_arr, *user_info;
+        smart_str *sstr;
+        char *channel, *socket_id, *user_data, *ret_str;
+	long user_id;
+        int channel_len, socket_id_len, i;
+        pusher_object *obj;
+
+        if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ssl|z", &channel, &channel_len, &socket_id, &socket_id_len, &user_id, &user_info) == FAILURE) {
+                RETURN_FALSE;
+        }
 
 	this = getThis();
 	obj = (pusher_object *)zend_object_store_get_object(this TSRMLS_CC);
-	hmac_sha256((unsigned char *)obj->secret, strlen(obj->secret), (unsigned char *)sign_this, strlen(sign_this), mac, SHA256_DIGEST_SIZE);
-	signature = (char *)emalloc(SHA256_DIGEST_SIZE * 2 + 1);
-	memset(signature, 0, SHA256_DIGEST_SIZE * 2 + 1);
-	for(i=0;i<SHA256_DIGEST_SIZE;i++)
-		sprintf((char *)signature + i*2, "%02x", mac[i]);
-	efree(sign_this);
-	i = strlen(obj->key) + strlen(signature) + 2; //yes, I'm repurposing i, bad practice blah blah
-	auth_str = (char *)emalloc(i); // 'key:signature'
-	snprintf(auth_str, i, "%s:%s", obj->key, signature);
-	efree(signature);
-
 	ALLOC_INIT_ZVAL(ret_arr);
 	array_init(ret_arr);
-	add_assoc_string(ret_arr, "auth", auth_str, 1);
-	efree(auth_str);
-	if(custom_data) {
-		add_assoc_string(ret_arr, "channel_data", custom_data, 1); //not sure about this, copying should work and still free custom_data after function ends.
+	add_assoc_long(ret_arr, "user_id", user_id);
+	if(user_info != NULL) {
+		add_assoc_zval(ret_arr, "user_info", user_info);
 	}
-
 	sstr = emalloc(sizeof(smart_str));
 	smart_str_sets(sstr, estrdup(""));
 	php_json_encode(sstr, ret_arr, 0);
 	smart_str_0(sstr);
-	ret_str = estrdup(sstr->c);
+	user_data = estrdup(sstr->c);
 	smart_str_free(sstr);
-
+	ret_str = socket_auth_str(obj, channel, channel_len, socket_id, socket_id_len, user_data, strlen(user_data));
+	efree(user_data);
 	RETURN_STRING(ret_str, 0);
-}
-
-PHP_METHOD(pusher, presence_auth) {
-	RETURN_FALSE;
 }
 
 
