@@ -128,7 +128,7 @@ static char *socket_auth_str(pusher_object *obj, char *channel, int channel_len,
 	for(i=0;i<SHA256_DIGEST_SIZE;i++)
 		sprintf((char *)signature + i*2, "%02x", mac[i]);
 	efree(sign_this);
-	i = strlen(obj->key) + strlen(signature);
+	i = strlen(obj->key) + strlen(signature) + 2;
 	auth_str = (char *)emalloc(i);
 	snprintf(auth_str, i, "%s:%s", obj->key, signature);
 	efree(signature);
